@@ -440,7 +440,7 @@ function buildArtifactContext(
 }
 
 function normalizeContextString(value: string | undefined): string | undefined {
-  const normalized = value?.trim();
+  const normalized = normalizeOptionalString(value);
   return normalized ? normalized : undefined;
 }
 
