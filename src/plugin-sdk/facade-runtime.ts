@@ -8,7 +8,6 @@ import { configMayNeedPluginAutoEnable } from "../config/plugin-auto-enable.shar
 import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.js";
 import { resolveBundledPluginsDir } from "../plugins/bundled-dir.js";
-import { listBundledPluginMetadata } from "../plugins/bundled-plugin-metadata.js";
 import {
   createPluginActivationSource,
   normalizePluginsConfig,
@@ -298,59 +297,13 @@ function getFacadeBoundaryResolvedConfig() {
   return resolved;
 }
 
-function resolveBundledMetadataManifestRecord(params: {
-  dirName: string;
-  artifactBasename: string;
+function readBundledPluginManifestRecordFromDir(params: {
+  pluginsRoot: string;
+  resolvedDirName: string;
 }): FacadePluginManifestLike | null {
-  const location = resolveFacadeModuleLocation(params);
-  if (!location) {
-    return null;
-  }
-  if (location.modulePath.startsWith(`${OPENCLAW_SOURCE_EXTENSIONS_ROOT}${path.sep}`)) {
-    const relativeToExtensions = path.relative(
-      OPENCLAW_SOURCE_EXTENSIONS_ROOT,
-      location.modulePath,
-    );
-    const resolvedDirName = relativeToExtensions.split(path.sep)[0];
-    if (!resolvedDirName) {
-      return null;
-    }
-    const metadata = listBundledPluginMetadata({
-      includeChannelConfigs: false,
-      includeSyntheticChannelConfigs: false,
-    }).find(
-      (entry) =>
-        entry.dirName === resolvedDirName ||
-        entry.manifest.id === params.dirName ||
-        entry.manifest.channels?.includes(params.dirName),
-    );
-    if (!metadata) {
-      return null;
-    }
-    return {
-      id: metadata.manifest.id,
-      origin: "bundled",
-      enabledByDefault: metadata.manifest.enabledByDefault,
-      rootDir: path.resolve(OPENCLAW_SOURCE_EXTENSIONS_ROOT, metadata.dirName),
-      channels: [...(metadata.manifest.channels ?? [])],
-    };
-  }
-  const bundledPluginsDir = resolveBundledPluginsDir();
-  if (!bundledPluginsDir) {
-    return null;
-  }
-  const normalizedBundledPluginsDir = path.resolve(bundledPluginsDir);
-  if (!location.modulePath.startsWith(`${normalizedBundledPluginsDir}${path.sep}`)) {
-    return null;
-  }
-  const relativeToBundledDir = path.relative(normalizedBundledPluginsDir, location.modulePath);
-  const resolvedDirName = relativeToBundledDir.split(path.sep)[0];
-  if (!resolvedDirName) {
-    return null;
-  }
   const manifestPath = path.join(
-    normalizedBundledPluginsDir,
-    resolvedDirName,
+    params.pluginsRoot,
+    params.resolvedDirName,
     "openclaw.plugin.json",
   );
   if (!fs.existsSync(manifestPath)) {
@@ -369,7 +322,7 @@ function resolveBundledMetadataManifestRecord(params: {
       id: raw.id,
       origin: "bundled",
       enabledByDefault: raw.enabledByDefault === true,
-      rootDir: path.join(normalizedBundledPluginsDir, resolvedDirName),
+      rootDir: path.join(params.pluginsRoot, params.resolvedDirName),
       channels: Array.isArray(raw.channels)
         ? raw.channels.filter((entry): entry is string => typeof entry === "string")
         : [],
@@ -377,6 +330,47 @@ function resolveBundledMetadataManifestRecord(params: {
   } catch {
     return null;
   }
+}
+
+function resolveBundledMetadataManifestRecord(params: {
+  dirName: string;
+  artifactBasename: string;
+}): FacadePluginManifestLike | null {
+  const location = resolveFacadeModuleLocation(params);
+  if (!location) {
+    return null;
+  }
+  if (location.modulePath.startsWith(`${OPENCLAW_SOURCE_EXTENSIONS_ROOT}${path.sep}`)) {
+    const relativeToExtensions = path.relative(
+      OPENCLAW_SOURCE_EXTENSIONS_ROOT,
+      location.modulePath,
+    );
+    const resolvedDirName = relativeToExtensions.split(path.sep)[0];
+    if (!resolvedDirName) {
+      return null;
+    }
+    return readBundledPluginManifestRecordFromDir({
+      pluginsRoot: OPENCLAW_SOURCE_EXTENSIONS_ROOT,
+      resolvedDirName,
+    });
+  }
+  const bundledPluginsDir = resolveBundledPluginsDir();
+  if (!bundledPluginsDir) {
+    return null;
+  }
+  const normalizedBundledPluginsDir = path.resolve(bundledPluginsDir);
+  if (!location.modulePath.startsWith(`${normalizedBundledPluginsDir}${path.sep}`)) {
+    return null;
+  }
+  const relativeToBundledDir = path.relative(normalizedBundledPluginsDir, location.modulePath);
+  const resolvedDirName = relativeToBundledDir.split(path.sep)[0];
+  if (!resolvedDirName) {
+    return null;
+  }
+  return readBundledPluginManifestRecordFromDir({
+    pluginsRoot: normalizedBundledPluginsDir,
+    resolvedDirName,
+  });
 }
 
 function resolveBundledPluginManifestRecord(params: {
